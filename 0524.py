@@ -24,27 +24,40 @@ def calc_ks(r_val):
 
 # 4. K/S -> RGB Hex 변환 함수 (색상 패치용)
 def ks_to_hex(ks_array):
-    v = np.array(ks_array).flatten()
-    R = (v + 1) - np.sqrt(v**2 + 2*v)
+
+    # K/S → Reflectance 변환
+    ks = np.array(ks_array).flatten()
+    R = 1 + ks - np.sqrt(ks**2 + 2*ks)
+
+    # 반사율 범위 제한
     R = np.clip(R, 0, 1)
 
-    cmf_x = np.array([0.0143, 0.0435, 0.1344, 0.2839, 0.3483, 0.3362, 0.2908, 0.1954, 0.0956, 0.0320, 0.0049, 0.0093, 0.0633, 0.1655, 0.2904, 0.4334, 0.5945, 0.7621, 0.9163, 1.0263, 1.0622, 1.0026, 0.8544, 0.6424, 0.4479, 0.2835, 0.1649, 0.0874, 0.0468, 0.0227, 0.0114])
-    cmf_y = np.array([0.0004, 0.0012, 0.0040, 0.0116, 0.0230, 0.0380, 0.0600, 0.0910, 0.1390, 0.2080, 0.3230, 0.5030, 0.7100, 0.8620, 0.9540, 0.9950, 0.9950, 0.9520, 0.8700, 0.7570, 0.6310, 0.5030, 0.3810, 0.2650, 0.1750, 0.1070, 0.0610, 0.0320, 0.0170, 0.0082, 0.0041])
-    cmf_z = np.array([0.0679, 0.2074, 0.6456, 1.3856, 1.7471, 1.7721, 1.6692, 1.2876, 0.8130, 0.4652, 0.2720, 0.1582, 0.0782, 0.0422, 0.0203, 0.0087, 0.0039, 0.0021, 0.0017, 0.0011, 0.0008, 0.0003, 0.0002, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000])
-    d65 = np.array([82.75, 91.49, 93.43, 86.68, 104.86, 117.01, 117.81, 114.86, 115.92, 108.81, 109.35, 107.80, 104.79, 107.69, 104.41, 104.05, 100.00, 96.33, 95.79, 88.69, 90.01, 89.60, 87.70, 83.29, 83.70, 80.03, 80.21, 82.28, 78.28, 69.72, 71.61])
+    # 각 파장대 평균 반사율
+    blue = np.mean(R[0:10])      # 400~490nm
+    green = np.mean(R[10:20])    # 500~590nm
+    red = np.mean(R[20:31])      # 600~700nm
 
-    N = np.sum(d65 * cmf_y)
-    X = np.sum(R * d65 * cmf_x) / N
-    Y = np.sum(R * d65 * cmf_y) / N
-    Z = np.sum(R * d65 * cmf_z) / N
+    # RGB 구성
+    rgb = np.array([
+        red * 0.85,
+        green * 0.95,
+        blue * 1.35
+    ])
 
-    xyz_to_rgb = np.array([[3.2404542, -1.5371385, -0.4985314], [-0.9692660, 1.8760108, 0.0415560], [0.0556434, -0.2040259, 1.0572252]])
-    rgb_linear = np.clip(xyz_to_rgb.dot(np.array([X, Y, Z])), 0, 1)
+    # 정규화
+    rgb = rgb / np.max(rgb)
 
-    rgb = np.where(rgb_linear <= 0.0031308, 12.92 * rgb_linear, 1.055 * (rgb_linear**(1/2.4)) - 0.055)
-    rgb_255 = np.clip(np.round(rgb * 255), 0, 255).astype(int)
+    # 감마 보정
+    rgb = np.power(rgb, 0.8)
 
-    return '#{:02X}{:02X}{:02X}'.format(rgb_255[0], rgb_255[1], rgb_255[2])
+    # 0~255 변환
+    rgb_255 = np.clip(rgb * 255, 0, 255).astype(int)
+
+    return '#{:02X}{:02X}{:02X}'.format(
+        rgb_255[0],
+        rgb_255[1],
+        rgb_255[2]
+    )
 
 # 5. QTX 파싱 함수
 def parse_qtx(text):
@@ -127,7 +140,7 @@ if uploaded_file is not None:
             return ['background-color: #d4edda' if row['판정'] == '합격' else 'background-color: #f8d7da' for _ in row]
 
         display_df = rank_df[["순위", "염료명", "최적 농도(%)", "오차(RMSE)", "형태 유사도", "판정"]]
-        st.dataframe(display_df.style.apply(highlight_status, axis=1).hide(axis="index"), use_container_width=True)
+        st.dataframe(display_df.style.apply(highlight_status, axis=1).hide(axis="index"), width='stretch')
         
         # 💡 스마트 연동: 1등으로 뽑힌 염료의 이름을 기본값으로 추출
         top1_dye = rank_df.iloc[0]["염료명"]
